@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+
 const { validationResult } = require('express-validator/check');
 
 const Product = require('../models/product');
@@ -9,6 +11,7 @@ exports.getAddProduct = (req, res, next) => {
     editing: false,
     hasError: false,
     errorMessage: null,
+    validationErrors: []
   });
 };
 
@@ -17,8 +20,8 @@ exports.postAddProduct = (req, res, next) => {
   const imageUrl = req.body.imageUrl;
   const price = req.body.price;
   const description = req.body.description;
-
   const errors = validationResult(req);
+
   if (!errors.isEmpty()) {
     console.log(errors.array());
     return res.status(422).render('admin/edit-product', {
@@ -26,18 +29,24 @@ exports.postAddProduct = (req, res, next) => {
       path: '/admin/add-product',
       editing: false,
       hasError: true,
+      product: {
+        title: title,
+        imageUrl: imageUrl,
+        price: price,
+        description: description
+      },
       errorMessage: errors.array()[0].msg,
-      product: { title: title, imageUrl: imageUrl, price: price, description: description },
-      validationErrors: errors.array(),
+      validationErrors: errors.array()
     });
   }
 
   const product = new Product({
+    // _id: new mongoose.Types.ObjectId('5badf72403fd8b5be0366e81'),
     title: title,
     price: price,
     description: description,
     imageUrl: imageUrl,
-    userId: req.user,
+    userId: req.user
   });
   product
     .save()
@@ -47,7 +56,24 @@ exports.postAddProduct = (req, res, next) => {
       res.redirect('/admin/products');
     })
     .catch(err => {
-      console.log(err);
+      // return res.status(500).render('admin/edit-product', {
+      //   pageTitle: 'Add Product',
+      //   path: '/admin/add-product',
+      //   editing: false,
+      //   hasError: true,
+      //   product: {
+      //     title: title,
+      //     imageUrl: imageUrl,
+      //     price: price,
+      //     description: description
+      //   },
+      //   errorMessage: 'Database operation failed, please try again.',
+      //   validationErrors: []
+      // });
+      // res.redirect('/500');
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
     });
 };
 
@@ -66,13 +92,17 @@ exports.getEditProduct = (req, res, next) => {
         pageTitle: 'Edit Product',
         path: '/admin/edit-product',
         editing: editMode,
+        product: product,
         hasError: false,
         errorMessage: null,
-        product: product,
         validationErrors: []
       });
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
+    });
 };
 
 exports.postEditProduct = (req, res, next) => {
@@ -83,14 +113,13 @@ exports.postEditProduct = (req, res, next) => {
   const updatedDesc = req.body.description;
 
   const errors = validationResult(req);
+
   if (!errors.isEmpty()) {
-    //console.log(errors.array());
     return res.status(422).render('admin/edit-product', {
       pageTitle: 'Edit Product',
       path: '/admin/edit-product',
       editing: true,
       hasError: true,
-      errorMessage: errors.array()[0].msg,
       product: {
         title: updatedTitle,
         imageUrl: updatedImageUrl,
@@ -98,7 +127,8 @@ exports.postEditProduct = (req, res, next) => {
         description: updatedDesc,
         _id: prodId
       },
-      validationErrors: errors.array(),
+      errorMessage: errors.array()[0].msg,
+      validationErrors: errors.array()
     });
   }
 
@@ -116,7 +146,11 @@ exports.postEditProduct = (req, res, next) => {
         res.redirect('/admin/products');
       });
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
+    });
 };
 
 exports.getProducts = (req, res, next) => {
@@ -128,10 +162,14 @@ exports.getProducts = (req, res, next) => {
       res.render('admin/products', {
         prods: products,
         pageTitle: 'Admin Products',
-        path: '/admin/products',
+        path: '/admin/products'
       });
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
+    });
 };
 
 exports.postDeleteProduct = (req, res, next) => {
@@ -141,5 +179,9 @@ exports.postDeleteProduct = (req, res, next) => {
       console.log('DESTROYED PRODUCT');
       res.redirect('/admin/products');
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
+    });
 };

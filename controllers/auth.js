@@ -1,6 +1,8 @@
 const crypto = require('crypto');
+
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
+
 const { validationResult } = require('express-validator/check');
 
 const User = require('../models/user');
@@ -26,7 +28,10 @@ exports.getLogin = (req, res, next) => {
     path: '/login',
     pageTitle: 'Login',
     errorMessage: message,
-    oldInput: { email: '', password: '' },
+    oldInput: {
+      email: '',
+      password: '',
+    },
     validationErrors: [],
   });
 };
@@ -42,7 +47,11 @@ exports.getSignup = (req, res, next) => {
     path: '/signup',
     pageTitle: 'Signup',
     errorMessage: message,
-    oldInput: { email: '', password: '', confirmPassword: '' },
+    oldInput: {
+      email: '',
+      password: '',
+      confirmPassword: '',
+    },
     validationErrors: [],
   });
 };
@@ -50,25 +59,32 @@ exports.getSignup = (req, res, next) => {
 exports.postLogin = (req, res, next) => {
   const email = req.body.email;
   const password = req.body.password;
+
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    console.log(errors.array());
     return res.status(422).render('auth/login', {
       path: '/login',
       pageTitle: 'Login',
       errorMessage: errors.array()[0].msg,
-      oldInput: { email: req.body.email, password: req.body.password },
+      oldInput: {
+        email: email,
+        password: password,
+      },
       validationErrors: errors.array(),
     });
   }
+
   User.findOne({ email: email })
     .then(user => {
       if (!user) {
-        return res.render('auth/login', {
+        return res.status(422).render('auth/login', {
           path: '/login',
           pageTitle: 'Login',
-          errorMessage: 'Invalid email or password',
-          oldInput: { email: email, password: password },
+          errorMessage: 'Invalid email or password.',
+          oldInput: {
+            email: email,
+            password: password,
+          },
           validationErrors: [],
         });
       }
@@ -83,27 +99,33 @@ exports.postLogin = (req, res, next) => {
               res.redirect('/');
             });
           }
-          req.flash('error', 'Invalid email or password');
-          res.render('auth/login', {
+          return res.status(422).render('auth/login', {
             path: '/login',
             pageTitle: 'Login',
-            errorMessage: 'Invalid email or password',
-            oldInput: { email: email, password: password },
+            errorMessage: 'Invalid email or password.',
+            oldInput: {
+              email: email,
+              password: password,
+            },
             validationErrors: [],
           });
         })
         .catch(err => {
           console.log(err);
-          return res.redirect('/login');
+          res.redirect('/login');
         });
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
+    });
 };
 
 exports.postSignup = (req, res, next) => {
   const email = req.body.email;
   const password = req.body.password;
-  const confirmPassword = req.body.confirmPassword;
+
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     console.log(errors.array());
@@ -112,14 +134,15 @@ exports.postSignup = (req, res, next) => {
       pageTitle: 'Signup',
       errorMessage: errors.array()[0].msg,
       oldInput: {
-        email: req.body.email,
-        password: req.body.password,
+        email: email,
+        password: password,
         confirmPassword: req.body.confirmPassword,
       },
       validationErrors: errors.array(),
     });
   }
-  return bcrypt
+
+  bcrypt
     .hash(password, 12)
     .then(hashedPassword => {
       const user = new User({
@@ -143,7 +166,9 @@ exports.postSignup = (req, res, next) => {
       console.log('Info: ', info);
     })
     .catch(err => {
-      console.log(err);
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
     });
 };
 
@@ -183,22 +208,25 @@ exports.postReset = (req, res, next) => {
         }
         user.resetToken = token;
         user.resetTokenExpiration = Date.now() + 3600000;
-        return user.save().then(result => {
-          res.redirect('/');
-          const mailOptions = {
-            from: '"Shop Administration" <reset@shop.com>',
-            to: req.body.email,
-            subject: 'Password Reset',
-            html: `
-              <p>You requested a password reset.</p>
-              <p>Click this <a href="http://localhost:3000/reset/${token}">link</a> to set a new password.</p>
-            `,
-          };
-          transporter.sendMail(mailOptions);
-        });
+        return user.save();
+      })
+      .then(result => {
+        res.redirect('/');
+        const mailOptions = {
+          from: '"Shop Administration" <reset@shop.com>',
+          to: req.body.email,
+          subject: 'Password Reset',
+          html: `
+            <p>You requested a password reset.</p>
+            <p>Click this <a href="http://localhost:3000/reset/${token}">link</a> to set a new password.</p>
+          `,
+        };
+        transporter.sendMail(mailOptions);
       })
       .catch(err => {
-        console.log(err);
+        const error = new Error(err);
+        error.httpStatusCode = 500;
+        return next(error);
       });
   });
 };
@@ -222,7 +250,9 @@ exports.getNewPassword = (req, res, next) => {
       });
     })
     .catch(err => {
-      console.log(err);
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
     });
 };
 
@@ -233,9 +263,9 @@ exports.postNewPassword = (req, res, next) => {
   let resetUser;
 
   User.findOne({
-    _id: userId,
     resetToken: passwordToken,
     resetTokenExpiration: { $gt: Date.now() },
+    _id: userId,
   })
     .then(user => {
       resetUser = user;
@@ -251,6 +281,8 @@ exports.postNewPassword = (req, res, next) => {
       res.redirect('/login');
     })
     .catch(err => {
-      console.log(err);
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
     });
 };
