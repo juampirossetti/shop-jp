@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PDFDocument = require('pdfkit');
+const stripe = require('stripe')('sk_test_dT6KbAYNXvON6VW81vU909Sn00BEtkph98');
 
 const Product = require('../models/product');
 const Order = require('../models/order');
@@ -30,7 +31,7 @@ exports.getProducts = (req, res, next) => {
         hasPreviousPage: page > 1,
         nextPage: page + 1,
         previousPage: page - 1,
-        lastPage: Math.ceil(totalItems / ITEMS_PER_PAGE)
+        lastPage: Math.ceil(totalItems / ITEMS_PER_PAGE),
       });
     })
     .catch(err => {
@@ -47,7 +48,7 @@ exports.getProduct = (req, res, next) => {
       res.render('shop/product-detail', {
         product: product,
         pageTitle: product.title,
-        path: '/products'
+        path: '/products',
       });
     })
     .catch(err => {
@@ -79,7 +80,7 @@ exports.getIndex = (req, res, next) => {
         hasPreviousPage: page > 1,
         nextPage: page + 1,
         previousPage: page - 1,
-        lastPage: Math.ceil(totalItems / ITEMS_PER_PAGE)
+        lastPage: Math.ceil(totalItems / ITEMS_PER_PAGE),
       });
     })
     .catch(err => {
@@ -98,7 +99,7 @@ exports.getCart = (req, res, next) => {
       res.render('shop/cart', {
         path: '/cart',
         pageTitle: 'Your Cart',
-        products: products
+        products: products,
       });
     })
     .catch(err => {
@@ -139,24 +140,60 @@ exports.postCartDeleteProduct = (req, res, next) => {
     });
 };
 
-exports.postOrder = (req, res, next) => {
+exports.getCheckout = (req, res, next) => {
   req.user
     .populate('cart.items.productId')
     .execPopulate()
     .then(user => {
+      const products = user.cart.items;
+      let total = 0;
+      products.forEach(p => {
+        total += p.quantity * p.productId.price;
+      });
+      res.render('shop/checkout', {
+        path: '/checkout',
+        pageTitle: 'Checkout',
+        products: products,
+        totalSum: total,
+      });
+    })
+    .catch(err => {
+      const error = new Error(err);
+      error.httpStatusCode = 500;
+      return next(error);
+    });
+};
+
+exports.postOrder = (req, res, next) => {
+  const token = req.body.stripeToken;
+  let totalSum = 0;
+  req.user
+    .populate('cart.items.productId')
+    .execPopulate()
+    .then(user => {
+      user.cart.items.forEach(p => {
+        totalSum = p.quantity * p.productId.price;
+      });
       const products = user.cart.items.map(i => {
         return { quantity: i.quantity, product: { ...i.productId._doc } };
       });
       const order = new Order({
         user: {
           email: req.user.email,
-          userId: req.user
+          userId: req.user,
         },
-        products: products
+        products: products,
       });
       return order.save();
     })
     .then(result => {
+      const charge = stripe.charges.create({
+        amount: Math.round(totalSum.toFixed(2)*100),
+        currency: 'usd',
+        description: 'Demo order',
+        source: token,
+        metadata: { order_id: result._id.toString() },
+      });
       return req.user.clearCart();
     })
     .then(() => {
@@ -175,7 +212,7 @@ exports.getOrders = (req, res, next) => {
       res.render('shop/orders', {
         path: '/orders',
         pageTitle: 'Your Orders',
-        orders: orders
+        orders: orders,
       });
     })
     .catch(err => {
@@ -200,15 +237,12 @@ exports.getInvoice = (req, res, next) => {
 
       const pdfDoc = new PDFDocument();
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader(
-        'Content-Disposition',
-        'inline; filename="' + invoiceName + '"'
-      );
+      res.setHeader('Content-Disposition', 'inline; filename="' + invoiceName + '"');
       pdfDoc.pipe(fs.createWriteStream(invoicePath));
       pdfDoc.pipe(res);
 
       pdfDoc.fontSize(26).text('Invoice', {
-        underline: true
+        underline: true,
       });
       pdfDoc.text('-----------------------');
       let totalPrice = 0;
@@ -216,14 +250,7 @@ exports.getInvoice = (req, res, next) => {
         totalPrice += prod.quantity * prod.product.price;
         pdfDoc
           .fontSize(14)
-          .text(
-            prod.product.title +
-              ' - ' +
-              prod.quantity +
-              ' x ' +
-              '$' +
-              prod.product.price
-          );
+          .text(prod.product.title + ' - ' + prod.quantity + ' x ' + '$' + prod.product.price);
       });
       pdfDoc.text('---');
       pdfDoc.fontSize(20).text('Total Price: $' + totalPrice);
