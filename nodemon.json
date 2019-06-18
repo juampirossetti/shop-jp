@@ -1,0 +1,8 @@
+{
+    "env": {
+        "MONGO_USER": "node-complete",
+        "MONGO_PASSWORD": "node-complete",
+        "MONGO_DEFAULT_DATABASE": "test",
+        "STRIPE_KEY": "sk_test_dT6KbAYNXvON6VW81vU909Sn00BEtkph98"
+    }
+}
